@@ -1,41 +1,24 @@
-# HTTP Restful API Server Example
-
-(See the README.md file in the upper level 'examples' directory for more information about examples.)
+# Iron Man MK3 Helmet Control Interface
 
 ## Overview
 
-This example mainly introduces how to implement a RESTful API server and HTTP server on ESP32, with a frontend browser UI.
+This is the full stack control interface for my Iron Man Mk3 helmet replica, as a birthday gift to @ivanempire.
 
-This example designs several APIs to fetch resources as follows:
-
-| API                        | Method | Resource Example                                      | Description                                                                              | Page URL |
-| -------------------------- | ------ | ----------------------------------------------------- | ---------------------------------------------------------------------------------------- | -------- |
-| `/api/v1/system/info`      | `GET`  | {<br />version:"v4.0-dev",<br />cores:2<br />}        | Used for clients to get system information like IDF version, ESP32 cores, etc            | `/`      |
-| `/api/v1/temp/raw`         | `GET`  | {<br />raw:22<br />}                                  | Used for clients to get raw temperature data read from sensor                            | `/chart` |
-| `/api/v1/light/brightness` | `POST` | { <br />red:160,<br />green:160,<br />blue:160<br />} | Used for clients to upload control values to ESP32 in order to control LED’s brightness  | `/light` |
-
-**Page URL** is the URL of the webpage which will send a request to the API.
-
-### About mDNS
+### mDNS
 
 The IP address of an IoT device may vary from time to time, so it’s impracticable to hard code the IP address in the webpage. In this example, we use the `mDNS` to parse the domain name `esp-home.local`, so that we can alway get access to the web server by this URL no matter what the real IP address behind it. See [here](https://docs.espressif.com/projects/esp-idf/en/latest/api-reference/protocols/mdns.html) for more information about mDNS.
 
 **Notes: mDNS is installed by default on most operating systems or is available as separate package.**
 
-### About deploy mode
+### Deploying frontend
 
-In development mode, it would be awful to flash the whole webpages every time we update the html, js or css files. So it is highly recommended to deploy the webpage to host PC via `semihost` technology. Whenever the browser fetch the webpage, ESP32 can forward the required files located on host PC. By this mean, it will save a lot of time when designing new pages.
-
-After developing, the pages should be deployed to one of the following destinations:
-
-* SPI Flash - which is recommended when the website after built is small (e.g. less than 2MB).
-* SD Card - which would be an option when the website after built is very large that the SPI Flash have not enough space to hold (e.g. larger than 2MB).
+The pages are built with Vue, and deployed to the on-chip SPI Flash. Be mindful to keep the size below 2MB.
 
 ### About frontend framework
 
-Many famous frontend frameworks (e.g. Vue, React, Angular) can be used in this example. Here we just take [Vue](https://vuejs.org/) as example and adopt the [vuetify](https://vuetifyjs.com/) as the UI library.
+We are using [Vue](https://vuejs.org/) alongside [vuetify](https://vuetifyjs.com/) for frontend framework.
 
-## How to use example
+## How to use
 
 ### Hardware Required
 
@@ -72,8 +55,7 @@ In the `Example Connection Configuration` menu:
 In the `Example Configuration` menu:
 
 * Set the domain name in `mDNS Host Name` option.
-* Choose the deploy mode in `Website deploy mode`, currently we support deploy website to host PC, SD card and SPI Nor flash.
-  * If we choose to `Deploy website to host (JTAG is needed)`, then we also need to specify the full path of the website in `Host path to mount (e.g. absolute path to web dist directory)`.
+* Choose the deploy mode in `Website deploy mode`, be mindful to pick the SPI Nor flash option, as the helmet hardware currently does not include JTAG connector or an SD card slot.
 * Set the mount point of the website in `Website mount point in VFS` option, the default value is `/www`.
 
 ### Build and Flash
@@ -81,9 +63,9 @@ In the `Example Configuration` menu:
 After the webpage design work has been finished, you should compile them by running following commands:
 
 ```bash
-cd path_to_this_example/front/web-demo
-npm install
-npm run build
+cd front/controls-ui
+yarn 
+yarn build
 ```
 
 After a while, you will see a `dist` directory which contains all the website files (e.g. html, js, css, images).
@@ -93,14 +75,6 @@ Run `idf.py -p PORT flash monitor` to build and flash the project..
 (To exit the serial monitor, type ``Ctrl-]``.)
 
 See the [Getting Started Guide](https://docs.espressif.com/projects/esp-idf/en/latest/get-started/index.html) for full steps to configure and use ESP-IDF to build projects.
-
-### Extra steps to do for deploying website by semihost
-
-We need to run the latest version of OpenOCD which should support semihost feature when we test this deploy mode:
-
-```bash
-openocd-esp32/bin/openocd -s openocd-esp32/share/openocd/scripts -f board/esp32-wrover-kit-3.3v.cfg
-```
 
 ## Example Output
 
@@ -113,6 +87,8 @@ Besides that, this example also enables the NetBIOS feature with the domain name
 ![esp_home_local](https://dl.espressif.com/dl/esp-idf/docs/_static/esp_home_local.gif)
 
 ### ESP monitor output
+
+We can set the visor state (on/off, or 0/1) alongside LED brightness.
 
 In the *Light* page, after we set up the light color and click on the check button, the browser will send a post request to ESP32, and in the console, we just print the color value.
 
@@ -133,5 +109,3 @@ I (137485) esp-rest: Light control: red = 50, green = 85, blue = 28
 
 1. Error occurred when building example: `...front/web-demo/dist doesn't exit. Please run 'npm run build' in ...front/web-demo`.
    * When you choose to deploy website to SPI flash, make sure the `dist` directory has been generated before you building this example.
-
-(For any technical queries, please open an [issue](https://github.com/espressif/esp-idf/issues) on GitHub. We will get back to you as soon as possible.)
