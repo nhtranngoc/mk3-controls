@@ -1,17 +1,6 @@
-/* servo motor control example
-
-   This example code is in the Public Domain (or CC0 licensed, at your option.)
-
-   Unless required by applicable law or agreed to in writing, this
-   software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-   CONDITIONS OF ANY KIND, either express or implied.
-*/
 #include <stdio.h>
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "esp_attr.h"
-
 #include "driver/mcpwm.h"
 #include "soc/mcpwm_periph.h"
 
@@ -62,9 +51,9 @@ void mcpwm_example_servo_control(void *arg)
     pwm_config.duty_mode = MCPWM_DUTY_MODE_0;
     mcpwm_init(MCPWM_UNIT_0, MCPWM_TIMER_0, &pwm_config);    //Configure PWM0A & PWM0B with above settings
         mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A, angleDown);
-        vTaskDelay(200);
+        // vTaskDelay(200);
         mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A, angleUp);
-        vTaskDelay(200);
+        // vTaskDelay(200);
     while (1) {
         // mcpwm_set_duty_in_us(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A, angleUp);
         // vTaskDelay(20);
@@ -78,10 +67,4 @@ void mcpwm_example_servo_control(void *arg)
         //     vTaskDelay(1);     //Add delay, since it takes time for servo to rotate, generally 100ms/60degree rotation at 5V
         // }
     }
-}
-
-void app_main(void)
-{
-    printf("Testing servo motor.......\n");
-    xTaskCreate(mcpwm_example_servo_control, "mcpwm_example_servo_control", 4096, NULL, 5, NULL);
 }

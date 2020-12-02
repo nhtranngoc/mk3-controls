@@ -36,8 +36,10 @@ export default {
   },
   watch: {
     isVisorOpen (v) {
+      let valueInInt = v ? 1 : 0;
+      console.log("Visor state: " + valueInInt);
       this.$http.post('/api/v1/visor/state', {
-        isVisorOpen: v
+        isVisorOpen: valueInInt
       }).then(data => {
         console.log(data)
       }).catch(error => {
@@ -47,6 +49,7 @@ export default {
   },
   methods: {
     setLed: function () {
+      console.log("LED value: " + this.led);
       this.$http
         .post('/api/v1/light/brightness', {
           led: this.led
