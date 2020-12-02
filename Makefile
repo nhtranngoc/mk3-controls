@@ -1,11 +1,11 @@
-PROJECT_NAME := restful_server
+PROJECT_NAME := mk3-controls
 
 EXTRA_COMPONENT_DIRS = $(IDF_PATH)/examples/common_components/protocol_examples_common
 
 include $(IDF_PATH)/make/project.mk
 
 ifdef CONFIG_EXAMPLE_WEB_DEPLOY_SF
-WEB_SRC_DIR = $(shell pwd)/front/web-demo
+WEB_SRC_DIR = $(shell pwd)/front/controls-ui
 ifneq ($(wildcard $(WEB_SRC_DIR)/dist/.*),)
 SPIFFS_IMAGE_FLASH_IN_PROJECT := 1
 $(eval $(call spiffs_create_partition_image,www,$(WEB_SRC_DIR)/dist))
