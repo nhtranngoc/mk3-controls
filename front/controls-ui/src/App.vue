@@ -1,29 +1,36 @@
 <template>
 <v-app>
   <div id="app">
-    <v-layout>
+    <v-container>
       <v-row>
-      <v-col cols="8" sm6>
-        <img src="./assets/ironman.png" />
-      </v-col>
-      <v-col cols="4" sm6>
-          <v-layout row wrap>
-            <v-flex xs3>
-              <v-subheader>LED</v-subheader>
-            </v-flex>
-            <v-flex xs9>
-              <v-slider v-model="led" max="100" @change="setLed"></v-slider>
-            </v-flex>
-            <v-flex xs3>
-              <v-subheader>Visor Open</v-subheader>
-            </v-flex>
-            <v-flex xs9>
-              <v-switch v-model="isVisorOpen"></v-switch>
-            </v-flex>
-          </v-layout>
-      </v-col>
+        <v-col cols="6" sm6>
+            <v-container fill-height>
+              <transition name="fade">
+              <v-row align-items="center" justify="start">
+                <v-col cols="12">
+                  <h1>MK3 Controls</h1>
+                </v-col>
+                <v-col cols="4">
+                  <v-subheader>LED Brightness</v-subheader>
+                </v-col>
+                <v-col cols="8">
+                  <v-slider v-model="led" max="100" step="10" ticks @change="setLed"></v-slider>
+                </v-col>
+                <v-col cols="4">
+                  <v-subheader>Visor Open</v-subheader>
+                </v-col>
+                <v-col cols="8">
+                  <v-switch v-model="isVisorOpen"></v-switch>
+                </v-col>
+              </v-row>
+              </transition>
+            </v-container>
+        </v-col>
+        <v-col cols="6" sm6>
+          <img src="./assets/ironman.png" />
+        </v-col>
       </v-row>
-    </v-layout>
+    </v-container>
   </div>
 </v-app>
 </template>
@@ -74,5 +81,25 @@ export default {
   text-align: center;
   color: #2c3e50;
   margin-top: 60px;
+  background-color: #FBFAF3;
 }
+
+h1 {
+  font-family: Avenir;
+  color: gray;
+}
+
+.fade-enter-active, .fade-leave-active {
+  transition-property: opacity;
+  transition-duration: .35s;
+}
+
+.fade-enter-active {
+  transition-delay: .35s;
+}
+
+.fade-enter, .fade-leave-active {
+  opacity: 0;
+}
+
 </style>

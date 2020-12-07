@@ -14,6 +14,8 @@
 #include "esp_vfs.h"
 #include "cJSON.h"
 
+void visor_set_state(int state);
+
 static const char *REST_TAG = "esp-rest";
 #define REST_CHECK(a, str, goto_tag, ...)                                              \
     do                                                                                 \
@@ -162,6 +164,7 @@ static esp_err_t visor_state_post_handler(httpd_req_t *req)
     cJSON *root = cJSON_Parse(buf);
     int state = cJSON_GetObjectItem(root, "isVisorOpen")->valueint;
     ESP_LOGI(REST_TAG, "Visor state: = %d", state);
+    visor_set_state(state);
     cJSON_Delete(root);
     httpd_resp_sendstr(req, "Post control value successfully");
     return ESP_OK;
