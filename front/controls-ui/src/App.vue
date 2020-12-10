@@ -1,37 +1,36 @@
 <template>
-<v-app>
-  <div id="app">
-    <v-container>
-      <v-row>
-        <v-col cols="6" sm6>
-            <v-container fill-height>
-              <transition name="fade">
-              <v-row align-items="center" justify="start">
-                <v-col cols="12">
-                  <h1>MK3 Controls</h1>
-                </v-col>
-                <v-col cols="4">
-                  <v-subheader>LED Brightness</v-subheader>
-                </v-col>
-                <v-col cols="8">
-                  <v-slider v-model="led" max="100" step="10" ticks @change="setLed"></v-slider>
-                </v-col>
-                <v-col cols="4">
-                  <v-subheader>Visor Open</v-subheader>
-                </v-col>
-                <v-col cols="8">
-                  <v-switch v-model="isVisorOpen"></v-switch>
-                </v-col>
-              </v-row>
-              </transition>
-            </v-container>
-        </v-col>
-        <v-col cols="6" sm6>
-          <img src="./assets/ironman.png" />
-        </v-col>
-      </v-row>
-    </v-container>
-  </div>
+<v-app id="app">
+  <v-container fluid>
+    <v-row>
+      <v-col>
+        <v-img src="https://raw.githubusercontent.com/nhtranngoc/mk3-controls/master/ironman.png" />
+      </v-col>
+      <v-col>
+        <v-container fill-height>
+          <transition name="fade">
+            <v-row align-items="center" justify="start">
+              <v-col cols="12" class="header">
+                <h1>MKIII Controls</h1>
+              </v-col>
+              <v-col cols="4">
+                <v-subheader>LED Brightness</v-subheader>
+              </v-col>
+              <v-col cols="7">
+                <v-slider v-model="led" max="100" step="10" ticks @change="setLed"></v-slider>
+              </v-col>
+              <v-col cols="4">
+                <v-subheader>Visor Open</v-subheader>
+              </v-col>
+              <v-col cols="7">
+                <v-switch v-model="isVisorOpen"></v-switch>
+              </v-col>
+              <v-spacer/>
+            </v-row>
+          </transition>
+        </v-container>
+      </v-col>
+    </v-row>
+  </v-container>
 </v-app>
 </template>
 
@@ -74,32 +73,37 @@ export default {
 
 
 <style>
+html {
+    height: 100vh;
+}
+
 #app {
   font-family: Avenir, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  text-align: center;
   color: #2c3e50;
-  margin-top: 60px;
   background-color: #FBFAF3;
+}
+
+.header {
+  margin-top: 2em;
 }
 
 h1 {
   font-family: Avenir;
   color: gray;
+  text-align: center;
 }
 
 .fade-enter-active, .fade-leave-active {
   transition-property: opacity;
   transition-duration: .35s;
 }
-
 .fade-enter-active {
   transition-delay: .35s;
 }
-
 .fade-enter, .fade-leave-active {
-  opacity: 0;
+  opacity: 0
 }
 
 </style>

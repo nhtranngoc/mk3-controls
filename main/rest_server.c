@@ -8,9 +8,18 @@
 */
 #include <string.h>
 #include <fcntl.h>
-#include "esp_http_server.h"
-#include "esp_system.h"
-#include "esp_log.h"
+
+#include <esp_wifi.h>
+#include <esp_event.h>
+#include <esp_log.h>
+#include <esp_system.h>
+#include <nvs_flash.h>
+#include <sys/param.h>
+#include "esp_netif.h"
+#include "esp_eth.h"
+#include "protocol_examples_common.h"
+
+#include <esp_https_server.h>
 #include "esp_vfs.h"
 #include "cJSON.h"
 
@@ -57,6 +66,11 @@ static esp_err_t set_content_type_from_file(httpd_req_t *req, const char *filepa
     return httpd_resp_set_type(req, type);
 }
 
+/* ==================================================
+ * ================= HANDLERS =======================
+ * ================================================== 
+ */
+
 /* Send HTTP response with the contents of the requested file */
 static esp_err_t rest_common_get_handler(httpd_req_t *req)
 {
@@ -65,7 +79,7 @@ static esp_err_t rest_common_get_handler(httpd_req_t *req)
     rest_server_context_t *rest_context = (rest_server_context_t *)req->user_ctx;
     strlcpy(filepath, rest_context->base_path, sizeof(filepath));
     if (req->uri[strlen(req->uri) - 1] == '/') {
-        strlcat(filepath, "/index.html", sizeof(filepath));
+        strlcat(filepath, "/output.html", sizeof(filepath));
     } else {
         strlcat(filepath, req->uri, sizeof(filepath));
     }
@@ -186,6 +200,7 @@ static esp_err_t system_info_get_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+
 esp_err_t start_rest_server(const char *base_path)
 {
     REST_CHECK(base_path, "wrong base path", err);
@@ -194,11 +209,29 @@ esp_err_t start_rest_server(const char *base_path)
     strlcpy(rest_context->base_path, base_path, sizeof(rest_context->base_path));
 
     httpd_handle_t server = NULL;
-    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.uri_match_fn = httpd_uri_match_wildcard;
 
     ESP_LOGI(REST_TAG, "Starting HTTP Server");
-    REST_CHECK(httpd_start(&server, &config) == ESP_OK, "Start server failed", err_start);
+
+    httpd_ssl_config_t conf = HTTPD_SSL_CONFIG_DEFAULT();
+
+    extern const unsigned char cacert_pem_start[] asm("_binary_cacert_pem_start");
+    extern const unsigned char cacert_pem_end[]   asm("_binary_cacert_pem_end");
+    conf.cacert_pem = cacert_pem_start;
+    conf.cacert_len = cacert_pem_end - cacert_pem_start;
+
+    extern const unsigned char prvtkey_pem_start[] asm("_binary_prvtkey_pem_start");
+    extern const unsigned char prvtkey_pem_end[]   asm("_binary_prvtkey_pem_end");
+    conf.prvtkey_pem = prvtkey_pem_start;
+    conf.prvtkey_len = prvtkey_pem_end - prvtkey_pem_start;
+
+    // conf.uri_match_fn = httpd_uri_match_wildcard;
+
+    REST_CHECK(httpd_ssl_start(&server, &conf) == ESP_OK, "Start server failed", err_start);
+
+    /* ==================================================
+    * ============== URI HANDLERS ======================
+    * ================================================== 
+    */
 
     /* URI handler for fetching system info */
     httpd_uri_t system_info_get_uri = {
@@ -230,7 +263,7 @@ esp_err_t start_rest_server(const char *base_path)
 
     /* URI handler for getting web server files */
     httpd_uri_t common_get_uri = {
-        .uri = "/*",
+        .uri = "/",
         .method = HTTP_GET,
         .handler = rest_common_get_handler,
         .user_ctx = rest_context

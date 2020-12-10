@@ -5,11 +5,14 @@
   "scripts": {
     "serve": "vue-cli-service serve",
     "build": "vue-cli-service build",
-    "lint": "vue-cli-service lint"
+    "lint": "vue-cli-service lint",
+    "flash": "rm -rf ./dist/js ./dist/index.html ./dist/favicon.ico"
   },
   "dependencies": {
     "axios": "^0.21.0",
     "core-js": "^3.6.5",
+    "html-webpack-inline-source-plugin": "^1.0.0-beta.2",
+    "html-webpack-plugin": "^4.5.0",
     "vue": "^2.6.11",
     "vue-axios": "^3.2.0",
     "vuetify": "^2.2.11"
