@@ -24,6 +24,7 @@ static const char *TAG = "example";
 
 esp_err_t start_rest_server(const char *base_path);
 void init_servo(void);
+esp_err_t init_nvs();
 
 static void initialise_mdns(void)
 {
@@ -73,7 +74,7 @@ esp_err_t init_fs(void)
 
 void app_main(void)
 {
-    ESP_ERROR_CHECK(nvs_flash_init());
+    ESP_ERROR_CHECK(init_nvs());
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     initialise_mdns();

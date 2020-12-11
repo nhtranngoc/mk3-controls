@@ -25,6 +25,12 @@
 #include "keep_alive.h"
 #include "cJSON.h"
 
+void visor_set_state(int state);
+uint8_t read_led();
+uint8_t read_visor();
+void write_led(uint8_t val);
+void write_visor(uint8_t val);
+
 #if !CONFIG_HTTPD_WS_SUPPORT
 #error This firmware cannot be used unless HTTPD_WS_SUPPORT is enabled in esp-http-server component configuration
 #endif
@@ -60,8 +66,6 @@ typedef struct rest_server_context {
 } rest_server_context_t;
 
 #define CHECK_FILE_EXTENSION(filename, ext) (strcasecmp(&filename[strlen(filename) - strlen(ext)], ext) == 0)
-
-void visor_set_state(int state);
 
 static void send_text(httpd_req_t *req, char *text) {
     httpd_ws_frame_t ws_pkt;
@@ -129,28 +133,30 @@ esp_err_t wss_handle_text_message(httpd_req_t *req, httpd_ws_frame_t *frame) {
        return ESP_FAIL;
    }
     switch(frame->payload[0]) {
-        case TEXT_GET_STATE: 
+        case TEXT_GET_STATE: {
             // If we're only getting a generic "GET" command, send everything
-            // uint8_t visor_state = visor_get_state();
-            // uint8_t led_state = led_get_state();
+            uint8_t led_state = read_led();
+            uint8_t visor_state = read_visor();
+            char led_buffer[5], visor_buffer[5];
+            // Format strings
+            snprintf(led_buffer, 5, "l%hhu", led_state);
+            snprintf(visor_buffer, 5, "v%hhu", visor_state);
             if (frame->len == 1) {
                 ESP_LOGI(REST_TAG, "Received GET_ALL_STATE message");
-                // send_text(visor_state, led_state);
-                send_text(req, "l255");
-                send_text(req, "v1");
+                send_text(req, led_buffer);
+                send_text(req, visor_buffer);
             } else {
                 if (frame->payload[1] == TEXT_TYPE_LED) {
                     ESP_LOGI(REST_TAG, "Received GET_LED_STATE message");
-                    send_text(req, "l255");
-                    // send_led_state();
+                    send_text(req, led_buffer);
                 } else if (frame->payload[1] == TEXT_TYPE_VISOR) {
                     ESP_LOGI(REST_TAG, "Received GET_VISOR_STATE message");
-                    // send_visor_state();
-                    send_text(req, "v1");
+                    send_text(req, visor_buffer);
                 }
             }
+        }
         break;
-        case TEXT_SET_STATE:
+        case TEXT_SET_STATE: {
             if (frame->len == 1) {
                 // Invalid set command
                 ESP_LOGE(REST_TAG, "Invalid SET_STATE message");
@@ -162,14 +168,15 @@ esp_err_t wss_handle_text_message(httpd_req_t *req, httpd_ws_frame_t *frame) {
                 uint8_t set_val_int = atoi(set_val_str);
                 if (frame->payload[1] == TEXT_TYPE_LED) {
                     ESP_LOGI(REST_TAG, "Received SET_LED message: %d", set_val_int);
+                    write_led(set_val_int);
                     send_text(req, "ok");
-                    // led_set_state(set_val_int);
                 } else if (frame->payload[1] == TEXT_TYPE_VISOR) {
                     ESP_LOGI(REST_TAG, "Received SET_VISOR message: %d", set_val_int);
-                    // visor_set_state(set_val_int);
+                    write_led(set_val_int);
                     send_text(req, "ok");
                 }
             }
+        }
         break;
     }
 
@@ -480,38 +487,26 @@ err:
 }
 
 // Get all clients and send async message
-// static void wss_server_send_messages(httpd_handle_t* server)
-// {
-//     bool send_messages = true;
-
-//     // Send async message to all connected clients that use websocket protocol every 10 seconds
-//     while (send_messages) {
-//         vTaskDelay(10000 / portTICK_PERIOD_MS);
-
-//         if (!*server) { // httpd might not have been created by now
-//             continue;
-//         }
-//         size_t clients = max_clients;
-//         int    client_fds[max_clients];
-//         if (httpd_get_client_list(*server, &clients, client_fds) == ESP_OK) {
-//             for (size_t i=0; i < clients; ++i) {
-//                 int sock = client_fds[i];
-//                 if (httpd_ws_get_fd_info(*server, sock) == HTTPD_WS_CLIENT_WEBSOCKET) {
-//                     ESP_LOGI(REST_TAG, "Active client (fd=%d) -> sending async message", sock);
-//                     struct async_resp_arg *resp_arg = malloc(sizeof(struct async_resp_arg));
-//                     resp_arg->hd = *server;
-//                     resp_arg->fd = sock;
-//                     if (httpd_queue_work(resp_arg->hd, send_hello, resp_arg) != ESP_OK) {
-//                         ESP_LOGE(REST_TAG, "httpd_queue_work failed!");
-//                         send_messages = false;
-//                         break;
-//                     }
+// static void wss_update_state(httpd_handle_t* server) {
+//     size_t clients = max_clients;
+//     int client_fds[max_clients];
+//     if (httpd_get_client_list(*server, &clients, client_fds) == ESP_OK) {
+//         for (size_t i=0; i < clients; ++i) {
+//             int sock = client_fds[i];
+//             if (httpd_ws_get_fd_info(*server, sock) == HTTPD_WS_CLIENT_WEBSOCKET) {
+//                 ESP_LOGI(REST_TAG, "Active client (fd=%d) -> sending async message", sock);
+//                 struct async_resp_arg *resp_arg = malloc(sizeof(struct async_resp_arg));
+//                 resp_arg->hd = *server;
+//                 resp_arg->fd = sock;
+//                 if (httpd_queue_work(resp_arg->hd, send_hello, resp_arg) != ESP_OK) {
+//                     ESP_LOGE(REST_TAG, "httpd_queue_work failed!");
+//                     break;
 //                 }
 //             }
-//         } else {
-//             ESP_LOGE(REST_TAG, "httpd_get_client_list failed!");
-//             return;
 //         }
+//     } else {
+//         ESP_LOGE(REST_TAG, "httpd_get_client_list failed!");
+//         return;
 //     }
 // }
 
