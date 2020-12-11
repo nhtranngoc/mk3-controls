@@ -38,47 +38,66 @@
 export default {
   name: 'App',
   data () {
-    return { led: 50, isVisorOpen: false }
+    return { 
+      led: 50, 
+      isVisorOpen: false,
+      connection: null, 
+    }
   },
   created() {
     console.log("Starting connection to WebSocket Server")
     this.connection = new WebSocket('wss://' + window.location.hostname + '/ws')
 
-    this.connection.onmessage = function(event) {
+    this.connection.onmessage = (event) => {
       console.log(event);
+      this.handleMessage(event.data)
     }
 
-    this.connection.onopen = function(event) {
-      console.log(event)
+    this.connection.onopen = (event) =>  {
+      console.log("On open register...");
+      console.log(event);
+      this.connection.send("g");
       console.log("Successfully connected to the echo websocket server...")
     };
+    
   },
   watch: {
     isVisorOpen (v) {
       let valueInInt = v ? 1 : 0;
-      console.log("Visor state: " + valueInInt);
-      this.$http.post('/api/v1/visor/state', {
-        isVisorOpen: valueInInt
-      }).then(data => {
-        console.log(data)
-      }).catch(error => {
-        console.log(error)
-      })
+      this.setVisor(valueInInt);
     }
   },
   methods: {
-    setLed: function () {
+    getLed: function(v) {
+      this.led = v;
+    },
+    getVisor: function(v) {
+      this.isVisorOpen = v;
+    },
+    setLed: function() {
       console.log("LED value: " + this.led);
-      this.$http
-        .post('/api/v1/light/brightness', {
-          led: this.led
-        })
-        .then(data => {
-          console.log(data)
-        })
-        .catch(error => {
-          console.log(error)
-        })
+      this.connection.send("l" + parseInt(this.led/100*255)); // Server takes an 8-bit unsigned value for led brightness
+    },
+    setVisor: function(v) {
+      console.log("Visor state: " + v);
+      this.connection.send("v" + v);
+    },
+    handleMessage: function(msg) {
+      console.log("Receiving message: " + msg);
+      if (msg === "ok") {
+        console.log("Success");
+      } else {
+        const value = parseInt(msg.substring(1));
+        if (msg.startsWith('l')) {
+          console.log("Get LED value: " + value);
+          this.getLed(parseInt(value/225*100));
+        }
+        if (msg.startsWith('v')) {
+          console.log("Get Visor value: " + value);
+          this.getVisor(value);
+        }
+      }
+
     }
   }
 }
