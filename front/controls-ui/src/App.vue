@@ -40,6 +40,19 @@ export default {
   data () {
     return { led: 50, isVisorOpen: false }
   },
+  created() {
+    console.log("Starting connection to WebSocket Server")
+    this.connection = new WebSocket('wss://' + window.location.hostname + '/ws')
+
+    this.connection.onmessage = function(event) {
+      console.log(event);
+    }
+
+    this.connection.onopen = function(event) {
+      console.log(event)
+      console.log("Successfully connected to the echo websocket server...")
+    };
+  },
   watch: {
     isVisorOpen (v) {
       let valueInInt = v ? 1 : 0;

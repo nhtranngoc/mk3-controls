@@ -6,6 +6,7 @@
    software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
    CONDITIONS OF ANY KIND, either express or implied.
 */
+#include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
 
@@ -21,9 +22,23 @@
 
 #include <esp_https_server.h>
 #include "esp_vfs.h"
+#include "keep_alive.h"
 #include "cJSON.h"
 
-void visor_set_state(int state);
+#if !CONFIG_HTTPD_WS_SUPPORT
+#error This firmware cannot be used unless HTTPD_WS_SUPPORT is enabled in esp-http-server component configuration
+#endif
+
+#define TEXT_GET_STATE      'g' 
+#define TEXT_SET_STATE      's'
+#define TEXT_TYPE_LED       'l'
+#define TEXT_TYPE_VISOR     'v'
+
+struct async_resp_arg {
+    httpd_handle_t hd;
+    int fd;
+};
+static const size_t max_clients = 4;
 
 static const char *REST_TAG = "esp-rest";
 #define REST_CHECK(a, str, goto_tag, ...)                                              \
@@ -46,6 +61,8 @@ typedef struct rest_server_context {
 
 #define CHECK_FILE_EXTENSION(filename, ext) (strcasecmp(&filename[strlen(filename) - strlen(ext)], ext) == 0)
 
+void visor_set_state(int state);
+
 /* Set HTTP response content type according to file extension */
 static esp_err_t set_content_type_from_file(httpd_req_t *req, const char *filepath)
 {
@@ -66,10 +83,118 @@ static esp_err_t set_content_type_from_file(httpd_req_t *req, const char *filepa
     return httpd_resp_set_type(req, type);
 }
 
+esp_err_t wss_open_fd(httpd_handle_t hd, int sockfd)
+{
+    ESP_LOGI(REST_TAG, "New client connected %d", sockfd);
+    wss_keep_alive_t h = httpd_get_global_user_ctx(hd);
+    return wss_keep_alive_add_client(h, sockfd);
+}
+
+void wss_close_fd(httpd_handle_t hd, int sockfd)
+{
+    ESP_LOGI(REST_TAG, "Client disconnected %d", sockfd);
+    wss_keep_alive_t h = httpd_get_global_user_ctx(hd);
+    wss_keep_alive_remove_client(h, sockfd);
+}
+
+int wss_handle_text_message(httpd_ws_frame_t *frame) {
+   if (frame->len == 0 ) {
+       ESP_LOGE(REST_TAG, "Invalid WebSocket message");
+       // Invalid frame
+       return -1;
+   }
+    switch(frame->payload[0]) {
+        case TEXT_GET_STATE: 
+            // If we're only getting a generic "GET" command, send everything
+            // uint8_t visor_state = visor_get_state();
+            // uint8_t led_state = led_get_state();
+            if (frame->len == 1) {
+                ESP_LOGI(REST_TAG, "Received GET_ALL_STATE message");
+                // send_text(visor_state, led_state);
+            } else {
+                if (frame->payload[1] == TEXT_TYPE_LED) {
+                    ESP_LOGI(REST_TAG, "Received GET_LED_STATE message");
+                    // send_led_state();
+                } else if (frame->payload[1] == TEXT_TYPE_VISOR) {
+                    ESP_LOGI(REST_TAG, "Received GET_VISOR_STATE message");
+                    // send_visor_state();
+                }
+            }
+        break;
+        case TEXT_SET_STATE:
+            if (frame->len == 1) {
+                // Invalid set command
+                ESP_LOGE(REST_TAG, "Invalid SET_STATE message");
+                return -1;
+            } else {
+                char set_val_str[4]; 
+                memcpy(set_val_str, frame->payload + 2, sizeof(set_val_str));
+                set_val_str[3] = '\n'; // Manual null terminator just in case
+                uint8_t set_val_int = atoi(set_val_str);
+                if (frame->payload[1] == TEXT_TYPE_LED) {
+                    ESP_LOGI(REST_TAG, "Received SET_LED message: %d", set_val_int);
+                    // led_set_state(set_val_int);
+                } else if (frame->payload[1] == TEXT_TYPE_VISOR) {
+                    ESP_LOGI(REST_TAG, "Received SET_VISOR message: %d", set_val_int);
+                    // visor_set_state(set_val_int);
+                }
+            }
+        break;
+    }
+
+    return 0;
+}
+
 /* ==================================================
  * ================= HANDLERS =======================
  * ================================================== 
  */
+
+static void stop_rest_server(httpd_handle_t server)
+{
+    // Stop keep alive thread
+    wss_keep_alive_stop(httpd_get_global_user_ctx(server));
+    // Stop the httpd server
+    httpd_ssl_stop(server);
+}
+
+/* Handle WS messages */
+static esp_err_t ws_handler(httpd_req_t *req)
+{
+    uint8_t buf[128] = { 0 };
+    httpd_ws_frame_t ws_pkt;
+    memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
+    ws_pkt.payload = buf;
+
+    // First receive the full ws message
+    esp_err_t ret = httpd_ws_recv_frame(req, &ws_pkt, 128);
+    if (ret != ESP_OK) {
+        ESP_LOGE(REST_TAG, "httpd_ws_recv_frame failed with %d", ret);
+        return ret;
+    }
+
+    // If it was a PONG, update the keep-alive
+    if (ws_pkt.type == HTTPD_WS_TYPE_PONG) {
+        ESP_LOGD(REST_TAG, "Received PONG message");
+        return wss_keep_alive_client_is_active(httpd_get_global_user_ctx(req->handle),
+                httpd_req_to_sockfd(req));
+
+    // If it was a TEXT message, just echo it back
+    } else if (ws_pkt.type == HTTPD_WS_TYPE_TEXT) {
+        ESP_LOGI(REST_TAG, "Received packet with message: %s", ws_pkt.payload);
+        wss_handle_text_message(&ws_pkt);
+
+        ret = httpd_ws_send_frame(req, &ws_pkt);
+        if (ret != ESP_OK) {
+            ESP_LOGE(REST_TAG, "httpd_ws_send_frame failed with %d", ret);
+        }
+        ESP_LOGI(REST_TAG, "ws_handler: httpd_handle_t=%p, sockfd=%d, client_info:%d", req->handle,
+                 httpd_req_to_sockfd(req), httpd_ws_get_fd_info(req->handle, httpd_req_to_sockfd(req)));
+        return ret;
+    }
+    return ESP_OK;
+}
+
 
 /* Send HTTP response with the contents of the requested file */
 static esp_err_t rest_common_get_handler(httpd_req_t *req)
@@ -199,10 +324,69 @@ static esp_err_t system_info_get_handler(httpd_req_t *req)
     cJSON_Delete(root);
     return ESP_OK;
 }
+/**
+ * ========================================
+*/
+static void send_hello(void *arg)
+{
+    static const char * data = "Hello client";
+    struct async_resp_arg *resp_arg = arg;
+    httpd_handle_t hd = resp_arg->hd;
+    int fd = resp_arg->fd;
+    httpd_ws_frame_t ws_pkt;
+    memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
+    ws_pkt.payload = (uint8_t*)data;
+    ws_pkt.len = strlen(data);
+    ws_pkt.type = HTTPD_WS_TYPE_TEXT;
 
+    httpd_ws_send_frame_async(hd, fd, &ws_pkt);
+    free(resp_arg);
+}
+
+static void send_ping(void *arg)
+{
+    struct async_resp_arg *resp_arg = arg;
+    httpd_handle_t hd = resp_arg->hd;
+    int fd = resp_arg->fd;
+    httpd_ws_frame_t ws_pkt;
+    memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
+    ws_pkt.payload = NULL;
+    ws_pkt.len = 0;
+    ws_pkt.type = HTTPD_WS_TYPE_PING;
+
+    httpd_ws_send_frame_async(hd, fd, &ws_pkt);
+    free(resp_arg);
+}
+
+bool client_not_alive_cb(wss_keep_alive_t h, int fd)
+{
+    ESP_LOGE(REST_TAG, "Client not alive, closing fd %d", fd);
+    httpd_sess_trigger_close(wss_keep_alive_get_user_ctx(h), fd);
+    return true;
+}
+
+bool check_client_alive_cb(wss_keep_alive_t h, int fd)
+{
+    ESP_LOGD(REST_TAG, "Checking if client (fd=%d) is alive", fd);
+    struct async_resp_arg *resp_arg = malloc(sizeof(struct async_resp_arg));
+    resp_arg->hd = wss_keep_alive_get_user_ctx(h);
+    resp_arg->fd = fd;
+
+    if (httpd_queue_work(resp_arg->hd, send_ping, resp_arg) == ESP_OK) {
+        return true;
+    }
+    return false;
+}
 
 esp_err_t start_rest_server(const char *base_path)
 {
+  // Prepare keep-alive engine
+    wss_keep_alive_config_t keep_alive_config = KEEP_ALIVE_CONFIG_DEFAULT();
+    keep_alive_config.max_clients = max_clients;
+    keep_alive_config.client_not_alive_cb = client_not_alive_cb;
+    keep_alive_config.check_client_alive_cb = check_client_alive_cb;
+    wss_keep_alive_t keep_alive = wss_keep_alive_start(&keep_alive_config);
+
     REST_CHECK(base_path, "wrong base path", err);
     rest_server_context_t *rest_context = calloc(1, sizeof(rest_server_context_t));
     REST_CHECK(rest_context, "No memory for rest context", err);
@@ -210,9 +394,13 @@ esp_err_t start_rest_server(const char *base_path)
 
     httpd_handle_t server = NULL;
 
-    ESP_LOGI(REST_TAG, "Starting HTTP Server");
+    ESP_LOGI(REST_TAG, "Starting HTTP + WS Server");
 
     httpd_ssl_config_t conf = HTTPD_SSL_CONFIG_DEFAULT();
+    conf.httpd.max_open_sockets = max_clients;
+    conf.httpd.global_user_ctx = keep_alive;
+    conf.httpd.open_fn = wss_open_fd;
+    conf.httpd.close_fn = wss_close_fd;
 
     extern const unsigned char cacert_pem_start[] asm("_binary_cacert_pem_start");
     extern const unsigned char cacert_pem_end[]   asm("_binary_cacert_pem_end");
@@ -232,6 +420,7 @@ esp_err_t start_rest_server(const char *base_path)
     * ============== URI HANDLERS ======================
     * ================================================== 
     */
+    ESP_LOGI(REST_TAG, "Registering URI handlers");
 
     /* URI handler for fetching system info */
     httpd_uri_t system_info_get_uri = {
@@ -270,9 +459,79 @@ esp_err_t start_rest_server(const char *base_path)
     };
     httpd_register_uri_handler(server, &common_get_uri);
 
+    /* URI handler for websocket */
+    httpd_uri_t ws = {
+        .uri        = "/ws",
+        .method     = HTTP_GET,
+        .handler    = ws_handler,
+        .user_ctx   = NULL,
+        .is_websocket = true,
+        .handle_ws_control_frames = true
+    };
+    httpd_register_uri_handler(server, &ws);
+    wss_keep_alive_set_user_ctx(keep_alive, server);
+
+
     return ESP_OK;
 err_start:
     free(rest_context);
 err:
     return ESP_FAIL;
+}
+
+// Get all clients and send async message
+static void wss_server_send_messages(httpd_handle_t* server)
+{
+    bool send_messages = true;
+
+    // Send async message to all connected clients that use websocket protocol every 10 seconds
+    while (send_messages) {
+        vTaskDelay(10000 / portTICK_PERIOD_MS);
+
+        if (!*server) { // httpd might not have been created by now
+            continue;
+        }
+        size_t clients = max_clients;
+        int    client_fds[max_clients];
+        if (httpd_get_client_list(*server, &clients, client_fds) == ESP_OK) {
+            for (size_t i=0; i < clients; ++i) {
+                int sock = client_fds[i];
+                if (httpd_ws_get_fd_info(*server, sock) == HTTPD_WS_CLIENT_WEBSOCKET) {
+                    ESP_LOGI(REST_TAG, "Active client (fd=%d) -> sending async message", sock);
+                    struct async_resp_arg *resp_arg = malloc(sizeof(struct async_resp_arg));
+                    resp_arg->hd = *server;
+                    resp_arg->fd = sock;
+                    if (httpd_queue_work(resp_arg->hd, send_hello, resp_arg) != ESP_OK) {
+                        ESP_LOGE(REST_TAG, "httpd_queue_work failed!");
+                        send_messages = false;
+                        break;
+                    }
+                }
+            }
+        } else {
+            ESP_LOGE(REST_TAG, "httpd_get_client_list failed!");
+            return;
+        }
+    }
+}
+
+/* Handle WSS on disconnect */
+static void disconnect_handler(void* arg, esp_event_base_t event_base,
+                               int32_t event_id, void* event_data)
+{
+    httpd_handle_t* server = (httpd_handle_t*) arg;
+    if (*server) {
+        stop_rest_server(*server);
+        *server = NULL;
+    }
+}
+
+/* Handle WSS on connect */
+static void connect_handler(void* arg, esp_event_base_t event_base,
+                            int32_t event_id, void* event_data)
+{
+    httpd_handle_t* server = (httpd_handle_t*) arg;
+    if (*server == NULL) {
+        *server = (void *) start_rest_server(CONFIG_EXAMPLE_WEB_MOUNT_POINT);
+    }
 }

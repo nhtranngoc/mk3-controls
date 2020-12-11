@@ -75,7 +75,7 @@ static void servo_set_degree(uint32_t degree, uint8_t channel) {
  * 
  * @param state 0 = down, 1 = up
  */
-void visor_set_state(int state) {
+void visor_set_state(uint8_t state) {
     if (state == 0) {
         // Visor down
         ESP_LOGI("example", "Setting visor down..");
