@@ -1,6 +1,6 @@
 build/
 mcpwm_servo_control/build/
-
+.vscode/
 
 # Created by https://www.toptal.com/developers/gitignore/api/vue,vuejs,yarn,c
 # Edit at https://www.toptal.com/developers/gitignore?templates=vue,vuejs,yarn,c

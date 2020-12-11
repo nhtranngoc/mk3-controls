@@ -16,13 +16,13 @@
                 <v-subheader>LED Brightness</v-subheader>
               </v-col>
               <v-col cols="7">
-                <v-slider v-model="led" max="100" step="10" ticks @change="setLed"></v-slider>
+                <v-slider v-model="led" max="255" step="25" ticks @change="setLed" :disabled="!isSet"></v-slider>
               </v-col>
               <v-col cols="4">
                 <v-subheader>Visor Open</v-subheader>
               </v-col>
               <v-col cols="7">
-                <v-switch v-model="isVisorOpen"></v-switch>
+                <v-switch v-model="isVisorOpen" :disabled="!isSet"></v-switch>
               </v-col>
               <v-spacer/>
             </v-row>
@@ -39,9 +39,10 @@ export default {
   name: 'App',
   data () {
     return { 
-      led: 50, 
+      led: 127, 
       isVisorOpen: false,
       connection: null, 
+      isSet: false,
     }
   },
   created() {
@@ -70,27 +71,36 @@ export default {
   methods: {
     getLed: function(v) {
       this.led = v;
+      this.isSet = true; // first setup
     },
     getVisor: function(v) {
       this.isVisorOpen = v;
+      this.isSet = true; 
     },
     setLed: function() {
       console.log("LED value: " + this.led);
-      this.connection.send("l" + parseInt(this.led/100*255)); // Server takes an 8-bit unsigned value for led brightness
+      this.connection.send("sl" + parseInt(this.led)); // Server takes an 8-bit unsigned value for led brightness
+      this.isSet = false;
     },
     setVisor: function(v) {
+      // Only fire when the watch value is different to prevent loop
+      if (this.isVisorOpen === v) {
+        return;
+      }
       console.log("Visor state: " + v);
-      this.connection.send("v" + v);
+      this.connection.send("sv" + v);
+      this.isSet = false;
     },
     handleMessage: function(msg) {
       console.log("Receiving message: " + msg);
       if (msg === "ok") {
         console.log("Success");
+        this.isSet = true;
       } else {
         const value = parseInt(msg.substring(1));
         if (msg.startsWith('l')) {
           console.log("Get LED value: " + value);
-          this.getLed(parseInt(value/225*100));
+          this.getLed(parseInt(value));
         }
         if (msg.startsWith('v')) {
           console.log("Get Visor value: " + value);
