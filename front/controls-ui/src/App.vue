@@ -16,13 +16,13 @@
                 <v-subheader>LED Brightness</v-subheader>
               </v-col>
               <v-col cols="7">
-                <v-slider v-model="led" max="255" step="25" ticks @change="setLed" :disabled="!isSet"></v-slider>
+                <v-slider v-model="led" max="255" step="25" ticks @change="setLed" :disabled="!isSetLed"></v-slider>
               </v-col>
               <v-col cols="4">
                 <v-subheader>Visor Open</v-subheader>
               </v-col>
               <v-col cols="7">
-                <v-switch v-model="isVisorOpen" :disabled="!isSet"></v-switch>
+                <v-switch v-model="isVisorOpen" :disabled="!isSetVisor"></v-switch>
               </v-col>
               <v-spacer/>
             </v-row>
@@ -42,7 +42,8 @@ export default {
       led: 127, 
       isVisorOpen: false,
       connection: null, 
-      isSet: false,
+      isSetLed: false,
+      isSetVisor: false,
     }
   },
   created() {
@@ -71,16 +72,16 @@ export default {
   methods: {
     getLed: function(v) {
       this.led = v;
-      this.isSet = true; // first setup
+      this.isSetLed = true; // first setup
     },
     getVisor: function(v) {
       this.isVisorOpen = v;
-      this.isSet = true; 
+      this.isSetVisor = true; 
     },
     setLed: function() {
       console.log("LED value: " + this.led);
       this.connection.send("sl" + parseInt(this.led)); // Server takes an 8-bit unsigned value for led brightness
-      this.isSet = false;
+      this.isSetLed = false;
     },
     setVisor: function(v) {
       // Only fire when the watch value is different to prevent loop
@@ -89,13 +90,16 @@ export default {
       }
       console.log("Visor state: " + v);
       this.connection.send("sv" + v);
-      this.isSet = false;
+      this.isSetVisor = false;
     },
     handleMessage: function(msg) {
       console.log("Receiving message: " + msg);
-      if (msg === "ok") {
-        console.log("Success");
-        this.isSet = true;
+      if (msg === "okl") {
+        console.log("Set LED success!");
+        this.isSetLed = true;
+      } else if (msg === "okv") {
+        console.log("Set Visor success!");
+        this.isSetVisor = true
       } else {
         const value = parseInt(msg.substring(1));
         if (msg.startsWith('l')) {

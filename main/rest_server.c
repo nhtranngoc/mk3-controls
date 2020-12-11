@@ -40,9 +40,12 @@ void write_visor(uint8_t val);
 #define TEXT_TYPE_LED       'l'
 #define TEXT_TYPE_VISOR     'v'
 
+httpd_handle_t server = NULL;
+
 struct async_resp_arg {
     httpd_handle_t hd;
     int fd;
+    char msg[5]; // constant msg size
 };
 static const size_t max_clients = 4;
 
@@ -126,6 +129,54 @@ void wss_close_fd(httpd_handle_t hd, int sockfd)
     wss_keep_alive_remove_client(h, sockfd);
 }
 
+static void send_text_with_custom_arg(void *arg) {
+    struct async_resp_arg *resp_arg = (struct async_resp_arg *) arg;
+    httpd_handle_t hd = resp_arg->hd;
+    int fd = resp_arg->fd;
+    httpd_ws_frame_t ws_pkt;
+    memset(&ws_pkt, 0, sizeof(httpd_ws_frame_t));
+    char payload[5];
+    memcpy(payload, resp_arg->msg, sizeof(payload));
+    payload[4] = '\0';
+    ws_pkt.payload = (uint8_t *)payload;
+    ws_pkt.len = strlen(payload);
+    ws_pkt.type = HTTPD_WS_TYPE_TEXT;
+
+    httpd_ws_send_frame_async(hd, fd, &ws_pkt);
+    free(resp_arg);
+}
+
+// Get all clients and send async message
+static void wss_broadcast(char *msg) {
+    if(!server) {
+        return;
+    }
+
+    ESP_LOGD(REST_TAG, "Broadcasting string: %s", msg);
+
+    size_t clients = max_clients;
+    int client_fds[max_clients];
+    if (httpd_get_client_list(server, &clients, client_fds) == ESP_OK) {
+        for (size_t i=0; i < clients; ++i) {
+            int sock = client_fds[i];
+            if (httpd_ws_get_fd_info(server, sock) == HTTPD_WS_CLIENT_WEBSOCKET) {
+                ESP_LOGI(REST_TAG, "Active client (fd=%d) -> sending async message", sock);
+                struct async_resp_arg *resp_arg = malloc(sizeof(struct async_resp_arg));
+                memcpy(resp_arg->msg, msg, sizeof(&msg));
+                resp_arg->hd = server;
+                resp_arg->fd = sock;
+                if (httpd_queue_work(resp_arg->hd, send_text_with_custom_arg, resp_arg) != ESP_OK) {
+                    ESP_LOGE(REST_TAG, "httpd_queue_work failed!");
+                    break;
+                }
+            }
+        }
+    } else {
+        ESP_LOGE(REST_TAG, "httpd_get_client_list failed!");
+        return;
+    }
+}
+
 esp_err_t wss_handle_text_message(httpd_req_t *req, httpd_ws_frame_t *frame) {
    if (frame->len == 0 ) {
        ESP_LOGE(REST_TAG, "Invalid WebSocket message");
@@ -163,17 +214,24 @@ esp_err_t wss_handle_text_message(httpd_req_t *req, httpd_ws_frame_t *frame) {
                 return ESP_FAIL;
             } else {
                 char set_val_str[4]; 
+                char buffer[5];
                 memcpy(set_val_str, frame->payload + 2, sizeof(set_val_str));
-                set_val_str[3] = '\n'; // Manual null terminator just in case
+                set_val_str[3] = '\0'; // Manual null terminator just in case
                 uint8_t set_val_int = atoi(set_val_str);
                 if (frame->payload[1] == TEXT_TYPE_LED) {
                     ESP_LOGI(REST_TAG, "Received SET_LED message: %d", set_val_int);
                     write_led(set_val_int);
-                    send_text(req, "ok");
+                    snprintf(buffer, 5, "l%hhu", set_val_int);
+                    buffer[4] = '\0';
+                    wss_broadcast(buffer);
+                    send_text(req, "okl");
                 } else if (frame->payload[1] == TEXT_TYPE_VISOR) {
                     ESP_LOGI(REST_TAG, "Received SET_VISOR message: %d", set_val_int);
                     write_led(set_val_int);
-                    send_text(req, "ok");
+                    snprintf(buffer, 5, "v%hhu", set_val_int);
+                    buffer[4] = '\0';
+                    wss_broadcast(buffer);
+                    send_text(req, "okv");
                 }
             }
         }
@@ -374,7 +432,7 @@ bool client_not_alive_cb(wss_keep_alive_t h, int fd)
 
 bool check_client_alive_cb(wss_keep_alive_t h, int fd)
 {
-    ESP_LOGD(REST_TAG, "Checking if client (fd=%d) is alive", fd);
+    ESP_LOGI(REST_TAG, "Checking if client (fd=%d) is alive", fd);
     struct async_resp_arg *resp_arg = malloc(sizeof(struct async_resp_arg));
     resp_arg->hd = wss_keep_alive_get_user_ctx(h);
     resp_arg->fd = fd;
@@ -398,8 +456,6 @@ esp_err_t start_rest_server(const char *base_path)
     rest_server_context_t *rest_context = calloc(1, sizeof(rest_server_context_t));
     REST_CHECK(rest_context, "No memory for rest context", err);
     strlcpy(rest_context->base_path, base_path, sizeof(rest_context->base_path));
-
-    httpd_handle_t server = NULL;
 
     ESP_LOGI(REST_TAG, "Starting HTTP + WS Server");
 
@@ -485,30 +541,6 @@ err_start:
 err:
     return ESP_FAIL;
 }
-
-// Get all clients and send async message
-// static void wss_update_state(httpd_handle_t* server) {
-//     size_t clients = max_clients;
-//     int client_fds[max_clients];
-//     if (httpd_get_client_list(*server, &clients, client_fds) == ESP_OK) {
-//         for (size_t i=0; i < clients; ++i) {
-//             int sock = client_fds[i];
-//             if (httpd_ws_get_fd_info(*server, sock) == HTTPD_WS_CLIENT_WEBSOCKET) {
-//                 ESP_LOGI(REST_TAG, "Active client (fd=%d) -> sending async message", sock);
-//                 struct async_resp_arg *resp_arg = malloc(sizeof(struct async_resp_arg));
-//                 resp_arg->hd = *server;
-//                 resp_arg->fd = sock;
-//                 if (httpd_queue_work(resp_arg->hd, send_hello, resp_arg) != ESP_OK) {
-//                     ESP_LOGE(REST_TAG, "httpd_queue_work failed!");
-//                     break;
-//                 }
-//             }
-//         }
-//     } else {
-//         ESP_LOGE(REST_TAG, "httpd_get_client_list failed!");
-//         return;
-//     }
-// }
 
 /* Handle WSS on disconnect */
 static void disconnect_handler(void* arg, esp_event_base_t event_base,
