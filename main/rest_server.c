@@ -26,6 +26,7 @@
 #include "cJSON.h"
 
 void visor_set_state(int state);
+void led_set_duty(uint8_t duty, int time);
 uint8_t read_led();
 uint8_t read_visor();
 void write_led(uint8_t val);
@@ -221,13 +222,15 @@ esp_err_t wss_handle_text_message(httpd_req_t *req, httpd_ws_frame_t *frame) {
                 if (frame->payload[1] == TEXT_TYPE_LED) {
                     ESP_LOGI(REST_TAG, "Received SET_LED message: %d", set_val_int);
                     write_led(set_val_int);
+                    led_set_duty(set_val_int, 500); // fade in 500s period.
                     snprintf(buffer, 5, "l%hhu", set_val_int);
                     buffer[4] = '\0';
                     wss_broadcast(buffer);
                     send_text(req, "okl");
                 } else if (frame->payload[1] == TEXT_TYPE_VISOR) {
                     ESP_LOGI(REST_TAG, "Received SET_VISOR message: %d", set_val_int);
-                    write_led(set_val_int);
+                    write_visor(set_val_int);
+                    visor_set_state(set_val_int);
                     snprintf(buffer, 5, "v%hhu", set_val_int);
                     buffer[4] = '\0';
                     wss_broadcast(buffer);

@@ -11,12 +11,12 @@ static const char *VISOR_NAME = "visor";
 // Low level read API
 static esp_err_t nvs_read(const char *name, uint8_t *val, esp_err_t *read_err) {
     nvs_handle_t handle;
-    esp_err_t err = nvs_open(STORAGE_NAME, NVS_READONLY, &handle);
+    esp_err_t err = nvs_open(STORAGE_NAME, NVS_READWRITE, &handle);
 
     ESP_LOGD(NVS_TAG, "Opening Non-Volatile Storage, read-only..");
     if(err != ESP_OK) {
         ESP_LOGE(NVS_TAG, "Error (%s) opening NVS handle!", esp_err_to_name(err));
-        return err;
+        // return err;
     } else {
         ESP_LOGD(NVS_TAG, "Opened! Reading value..");
 
